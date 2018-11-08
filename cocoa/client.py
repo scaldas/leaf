@@ -14,13 +14,16 @@ class Client:
 
         self.W_t = None
 
-    def train(self, sigma, rho):
+
+    def train(self, sigma, omega, rho, max_curr_iter, total_n):
         """Trains on self.model using the client's train_data."""
-        deltaB_t = self.model.train(self.train_data, self.W_t, sigma, rho)
-        return deltaB_t
+        deltaB_t, curr_iter = self.model.train(self.train_data, self.W_t, sigma, 
+            omega, rho, max_curr_iter, total_n)
+        return deltaB_t, curr_iter
 
     def test(self):
         """Tests local model on self.eval_data.
+
         Return:
             accuracy.
         """

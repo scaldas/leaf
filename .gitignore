@@ -8,3 +8,5 @@ utils/__pycache__/
 models/checkpoints/
 models/metrics/*.csv
 models/sent140/embs.json
+mocha/__pyache__/
+cocoa/__pyache__/
