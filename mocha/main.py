@@ -6,94 +6,46 @@ import numpy as np
 import os
 import sys
 
+import data_utils
+
 from client import Client
 from server import Server
-from model import ServerModel
-
-from utils.constants import DATASETS
-from utils.model_utils import read_data
-
-STAT_METRICS_PATH = 'metrics/stat_metrics.csv'
-SYS_METRICS_PATH = 'metrics/sys_metrics.csv'
+from model import ClientModel, ServerModel
 
 
 def main():
 
     args = parse_args()
 
-    model_path = '%s/%s.py' % (args.dataset, args.model)
-    if not os.path.exists(model_path):
-        print('Please specify a valid dataset and a valid model.')
-    model_path = '%s.%s' % (args.dataset, args.model)
+    args.dataset
     
-    print('############################## %s ##############################' % model_path)
-    mod = importlib.import_module(model_path)
-    ClientModel = getattr(mod, 'ClientModel')
+    print('############################## %s ##############################' % args.dataset)
 
-    tup = MAIN_PARAMS[args.dataset][args.t]
-    num_rounds = args.num_rounds if args.num_rounds != -1 else tup[0]
-    eval_every = args.eval_every if args.eval_every != -1 else tup[1]
-    clients_per_round = args.clients_per_round if args.clients_per_round != -1 else tup[2]
-
-    # Suppress tf warnings
-    tf.logging.set_verbosity(tf.logging.WARN)
-
-    # Create 2 models
-    model_params = MODEL_PARAMS[model_path]
-    if args.lr != -1:
-        model_params_list = list(model_params)
-        model_params_list[0] = args.lr
-        model_params = tuple(model_params_list)
-    tf.reset_default_graph()
-    
-    client_model = ClientModel(*model_params)
-    server_model = ServerModel(ClientModel(*model_params))
-
-    # Create server
-    server = Server(server_model)
 
     # Create clients
-    clients = setup_clients(args.dataset, client_model)
-    print('%d Clients in Total' % len(clients))
+    clients, num_features = setup_clients(args.dataset, args.lanbda, args.local_iters_perc)
+    num_clients = len(clients)
+
+    # Create server
+    server_model = ServerModel(num_clients, num_features, args.lanbda)
+    server = Server(num_clients, num_features, server_model)
+
+
+    print('%d Clients in Total' % num_clients)
 
     # Test untrained model on all clients
-    stat_metrics = server.test_model(clients)
-    all_ids, all_groups, all_num_samples = server.get_clients_test_info(clients)
-    metrics_writer.print_metrics(0, all_ids, stat_metrics, all_groups, all_num_samples, STAT_METRICS_PATH)
-    print_metrics(stat_metrics, all_num_samples)
+    acc = server.test_model(clients)
+    print(acc)
 
     # Simulate training
-    for i in range(num_rounds):
-        print('--- Round %d of %d: Training %d Clients ---' % (i+1, num_rounds, clients_per_round))
+    for i in range(args.num_outer_iters):
+        print('--- Round %d of %d ---' % (i+1, args.num_outer_iters))
 
-        # Select clients to train this round
-        server.select_clients(online(clients), num_clients=clients_per_round)
-        c_ids, c_groups, c_num_samples = server.get_clients_test_info()
+        server.orchestrate_local_training(args.num_inner_iters, clients)
+        server.update_global_covariances()
 
-        # Simulate server model training on selected clients' data
-        sys_metics = server.train_model(num_epochs=1, batch_size=10)
-        metrics_writer.print_metrics(i, c_ids, sys_metics, c_groups, c_num_samples, SYS_METRICS_PATH)
-
-        # Update server model
-        server.update_model()
-
-        # Test model on all clients
-        if (i + 1) % eval_every == 0 or (i + 1) == num_rounds:
-            stat_metrics = server.test_model(clients)
-            metrics_writer.print_metrics(i, all_ids, stat_metrics, all_groups, all_num_samples, STAT_METRICS_PATH)
-            print_metrics(stat_metrics, all_num_samples)
-
-    # Save server model
-    save_model(server_model, args.dataset, args.model)
-
-    # Close models
-    server_model.close()
-    client_model.close()
-
-
-def online(clients):
-    """We assume all users are always online."""
-    return clients
+        acc = server.test_model(clients)
+        print(acc)
 
 
 def parse_args():
@@ -102,90 +54,49 @@ def parse_args():
     parser.add_argument('-dataset',
                     help='name of dataset;',
                     type=str,
-                    choices=DATASETS,
+                    choices=['gleam'],
                     required=True)
-    parser.add_argument('-model',
-                    help='name of model;',
-                    type=str,
-                    required=True)
-    parser.add_argument('--num-rounds',
-                    help='number of rounds to simulate;',
-                    type=int,
-                    default=-1)
-    parser.add_argument('--eval-every',
-                    help='evaluate every ____ rounds;',
-                    type=int,
-                    default=-1)
-    parser.add_argument('--clients-per-round',
-                    help='number of clients trained per round;',
-                    type=int,
-                    default=-1)
-    parser.add_argument('--batch-size',
-                    help='batch size when clients train on data;',
-                    type=int,
-                    default=10)
-    parser.add_argument('--num-epochs',
-                    help='number of epochs when clients train on data;',
-                    type=int,
-                    default=1)
-    parser.add_argument('-t',
-                    help='simulation time: small, medium, or large;',
-                    type=str,
-                    choices=SIM_TIMES,
-                    default='large')
-    parser.add_argument('-lr',
-                    help='learning rate for local optimizers;',
-                    type=float,
-                    default=-1,
-                    required=False)
+    parser.add_argument('--lanbda',
+                        help='lambda.; default: 1;',
+                        type=float,
+                        default=1.0)
+    parser.add_argument('--num-outer-iters',
+                        help='max outer iters.; default: 10;',
+                        type=int,
+                        default=10)
+    parser.add_argument('--num-inner-iters',
+                        help='max inner iters.; default: 50;',
+                        type=int,
+                        default=50)
+    parser.add_argument('--local-iters-perc',
+                        help='local iters perc.; default: 0.5;',
+                        type=float,
+                        default=0.5)
 
     return parser.parse_args()
 
 
-def setup_clients(dataset, model=None):
-    """Instantiates clients based on given train and test data directories.
+def setup_clients(dataset, lanbda, local_iters_perc):
+    """Instantiates clients based on the given data directory.
 
     Return:
         all_clients: list of Client objects.
     """
-    train_data_dir = os.path.join('..', 'data', dataset, 'data', 'train')
-    test_data_dir = os.path.join('..', 'data', dataset, 'data', 'test')
+    X, y = data_utils.load_and_prepare_data(dataset)
+    Xtrain, Xtest, ytrain, ytest = data_utils.split_data(X, y, 0.8)
 
-    users, groups, train_data, test_data = read_data(train_data_dir, test_data_dir)
-    if len(groups) == 0:
-        groups = [[] for _ in users]
-    all_clients = [Client(u, g, train_data[u], test_data[u], model) for u, g in zip(users, groups)]
-    return all_clients
+    num_tasks = len(Xtrain[0])
+    num_features = Xtrain[0, 0].shape[1]
+    all_clients = []
+    for t in range(num_tasks):
+        c = Client(
+            t,
+            {'x': Xtrain[0, t], 'y': ytrain[0, t]},
+            {'x': Xtest[0, t], 'y': ytest[0, t]},
+            ClientModel(Xtrain[0, t].shape[0], num_features, lanbda, local_iters_perc))
+        all_clients.append(c)
 
-
-def save_model(server_model, dataset, model):
-    """Saves the given server model on checkpoints/dataset/model.ckpt."""
-    # Save server model
-    ckpt_path = os.path.join('checkpoints', dataset)
-    if not os.path.exists(ckpt_path):
-        os.makedirs(ckpt_path)
-    save_path = server_model.save(os.path.join(ckpt_path, '%s.ckpt' % model))
-    print('Model saved in path: %s' % save_path)
-
-
-def print_metrics(metrics, weights):
-    """Prints weighted averages of the given metrics.
-
-    Args:
-        metrics: dict with client ids as keys. Each entry is a dict
-            with the metrics of that client.
-        weights: dict with client ids as keys. Each entry is the weight
-            for that client.
-    """
-    ordered_weights = [weights[c] for c in sorted(weights)]
-    metric_names = metrics_writer.get_metrics_names(metrics)
-    for metric in metric_names:
-        ordered_metric = [metrics[c][metric] for c in sorted(metrics)]
-        print('%s: %g, 10th percentile: %g, 90th percentile %g' \
-              % (metric,
-                 np.average(ordered_metric, weights=ordered_weights),
-                 np.percentile(ordered_metric, 10),
-                 np.percentile(ordered_metric, 90)))
+    return all_clients, num_features
 
 
 if __name__ == '__main__':
