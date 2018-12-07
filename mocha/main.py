@@ -54,7 +54,7 @@ def parse_args():
     parser.add_argument('-dataset',
                     help='name of dataset;',
                     type=str,
-                    choices=['gleam'],
+                    choices=['gleam', 'femnist', 'sent140'],
                     required=True)
     parser.add_argument('--lanbda',
                         help='lambda.; default: 1;',
@@ -82,9 +82,7 @@ def setup_clients(dataset, lanbda, local_iters_perc):
     Return:
         all_clients: list of Client objects.
     """
-    X, y = data_utils.load_and_prepare_data(dataset)
-    Xtrain, Xtest, ytrain, ytest = data_utils.split_data(X, y, 0.8)
-
+    Xtrain, Xtest, ytrain, ytest = data_utils.load_and_prepare_data(dataset)
     num_tasks = len(Xtrain[0])
     num_features = Xtrain[0, 0].shape[1]
     all_clients = []

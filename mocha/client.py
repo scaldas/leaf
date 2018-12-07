@@ -28,7 +28,7 @@ class Client:
         labels = self.eval_data['y']
 
         ypred = np.dot(x_vecs, self.W_t)
-
+        
         return accuracy_score(np.sign(ypred).flatten(), labels.flatten())
 
     @property
