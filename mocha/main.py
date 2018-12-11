@@ -34,7 +34,7 @@ def main():
     print('%d Clients in Total' % num_clients)
 
     # Test untrained model on all clients
-    acc = server.test_model(clients)
+    _, acc = server.test_model(clients)
     print(acc)
 
     # Simulate training
@@ -44,7 +44,8 @@ def main():
         server.orchestrate_local_training(args.num_inner_iters, clients)
         server.update_global_covariances()
 
-        acc = server.test_model(clients)
+        _, acc = server.test_model(clients)
+
         print(acc)
 
 

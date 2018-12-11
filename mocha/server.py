@@ -36,11 +36,18 @@ class Server:
         self.send_model_to_clients(clients_to_test)
         
         accuracies = {}
+
+        accuracies_list = []
+        num_samples = []
+
         for client in clients_to_test:
             c_accuracy = client.test()
             accuracies[client.id] = c_accuracy
 
-        return accuracies
+            accuracies_list.append(c_accuracy)
+            num_samples.append(client.num_test_samples)
+
+        return accuracies, np.average(accuracies_list, weights=num_samples)
 
     def get_clients_test_info(self, clients):
         """Returns the ids, hierarchies and num_test_samples for the given clients.

@@ -50,10 +50,10 @@ def load_and_prepare_data_femnist():
 
     for user_id in keys_list:
         X_train_u = np.array([np.array(sample) for sample in train_data[user_id]['x']])
-        y_train_u = np.array([0 if i <= 9 else 1 for i in train_data[user_id]['y']])
+        y_train_u = np.array([-1 if i <= 9 else 1 for i in train_data[user_id]['y']])
 
         X_test_u = np.array([np.array(sample) for sample in test_data[user_id]['x']])
-        y_test_u = np.array([0 if i <= 9 else 1 for i in test_data[user_id]['y']])
+        y_test_u = np.array([-1 if i <= 9 else 1 for i in test_data[user_id]['y']])
         
         X_train.append(X_train_u)
         y_train.append(y_train_u)
